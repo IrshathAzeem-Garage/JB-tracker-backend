@@ -216,6 +216,22 @@ export const getDashboardData = async (req, res, next) => {
       LIMIT 8;
     `);
 
+    // 8. Recent Orders
+    const recentOrdersRes = await query(`
+      SELECT 
+        o.id,
+        o.order_number,
+        c.company_name as customer_name,
+        o.total_amount,
+        o.gross_profit,
+        o.status,
+        o.order_date
+      FROM orders o
+      JOIN customers c ON o.customer_id = c.id
+      ORDER BY o.created_at DESC
+      LIMIT 6;
+    `);
+
     return successResponse(res, {
       metrics,
       charts: {
@@ -231,7 +247,11 @@ export const getDashboardData = async (req, res, next) => {
         upcomingDeliveries: upcomingDeliveriesRes.rows,
         marginAlerts: marginAlertsRes.rows,
       },
-      recentActivity: recentActivityRes.rows,
+      recentOrders: recentOrdersRes.rows,
+      recentActivity: {
+        transactions: recentActivityRes.rows,
+        orders: recentOrdersRes.rows,
+      },
     }, 'Dashboard data retrieved successfully');
   } catch (err) {
     next(err);
