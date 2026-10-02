@@ -5,9 +5,14 @@ import { logAudit } from '../utils/audit.js';
 
 export const getCompanySettings = async (req, res, next) => {
   try {
-    const result = await query('SELECT * FROM company_settings LIMIT 1;');
+    let result = await query('SELECT * FROM company_settings LIMIT 1;');
     if (result.rows.length === 0) {
-      return errorResponse(res, 'Company settings not found', 404);
+      // Auto-initialize default company settings if table is empty
+      result = await query(`
+        INSERT INTO company_settings (company_name, business_name, currency, timezone, financial_year_start)
+        VALUES ('Just Business Things', 'Just Business Things', 'INR', 'Asia/Kolkata', '04-01')
+        RETURNING *;
+      `);
     }
     return successResponse(res, result.rows[0], 'Company settings retrieved');
   } catch (err) {
