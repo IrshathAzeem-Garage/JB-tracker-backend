@@ -42,15 +42,17 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
+// Lightweight public health check endpoints (no DB queries, no auth, safe for cold start wake-up)
+const healthHandler = (req, res) => {
   res.status(200).json({
-    status: 'online',
-    app: 'JB Tracker API',
-    company: 'Just Business Things',
+    success: true,
+    status: 'ok',
     timestamp: new Date().toISOString(),
   });
-});
+};
+
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
 
 // API Routes
 app.use('/api', routes);
