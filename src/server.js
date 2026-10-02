@@ -1,15 +1,8 @@
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { env } from './config/env.js';
 import app from './app.js';
 import { pool } from './config/db.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
-
-const PORT = process.env.PORT || 5000;
+const PORT = env.PORT || 5000;
 
 // Test DB connection before starting server
 pool.query('SELECT NOW()', (err, res) => {
@@ -22,7 +15,8 @@ pool.query('SELECT NOW()', (err, res) => {
   const server = app.listen(PORT, () => {
     console.log(`====================================================`);
     console.log(`  JB Tracker API Server Running on port ${PORT}`);
-    console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`  Environment: ${env.NODE_ENV}`);
+    console.log(`  Config Source: ${process.env.DATABASE_URL ? 'Explicit DB URL supplied' : 'Default local fallback'}`);
     console.log(`  API Base URL: http://localhost:${PORT}/api`);
     console.log(`====================================================`);
   });
@@ -39,4 +33,12 @@ pool.query('SELECT NOW()', (err, res) => {
 
   process.on('SIGTERM', gracefulShutdown);
   process.on('SIGINT', gracefulShutdown);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception thrown:', error);
 });

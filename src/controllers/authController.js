@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../config/db.js';
+import { env } from '../config/env.js';
 import { successResponse, errorResponse } from '../utils/response.js';
 import { logAudit } from '../utils/audit.js';
 
@@ -29,8 +30,8 @@ export const login = async (req, res, next) => {
 
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET || 'jb_tracker_super_secret_jwt_key_2026_production_ready',
-      { expiresIn: '7d' }
+      env.JWT_SECRET,
+      { expiresIn: env.JWT_EXPIRES_IN || '7d' }
     );
 
     await logAudit({

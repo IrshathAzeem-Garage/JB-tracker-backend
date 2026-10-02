@@ -1,17 +1,25 @@
 import pg from 'pg';
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+import { env } from './env.js';
 
 const { Pool } = pg;
 
+// Fetch connection string: Priority 1 is DATABASE_URL from .env or Render/Vercel platform settings
+const connectionString = env.DATABASE_URL;
+
+// Cloud hosted PostgreSQL (Render, Neon, Supabase, AWS, etc.) requires SSL
+const isRemoteDb =
+  connectionString.includes('render.com') ||
+  connectionString.includes('neon.tech') ||
+  connectionString.includes('supabase.co') ||
+  connectionString.includes('amazonaws.com') ||
+  env.DATABASE_SSL === 'true' ||
+  (env.NODE_ENV === 'production' &&
+    !connectionString.includes('localhost') &&
+    !connectionString.includes('127.0.0.1'));
+
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:Pass@123@localhost:5432/jb_tracker',
+  connectionString,
+  ssl: isRemoteDb ? { rejectUnauthorized: false } : false,
 });
 
 // Helper for single query

@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { query } from '../config/db.js';
+import { env } from '../config/env.js';
 import { errorResponse } from '../utils/response.js';
 
 export const authenticate = async (req, res, next) => {
@@ -10,7 +11,7 @@ export const authenticate = async (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'jb_tracker_super_secret_jwt_key_2026_production_ready');
+    const decoded = jwt.verify(token, env.JWT_SECRET);
 
     const result = await query(
       'SELECT id, name, email, role, is_active FROM users WHERE id = $1',
