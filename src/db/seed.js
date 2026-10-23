@@ -19,7 +19,7 @@ export async function runSeed() {
       console.log('Seeding company settings...');
       await client.query(`
         INSERT INTO company_settings (company_name, business_name, currency, timezone, financial_year_start)
-        VALUES ('Just Business Things', 'Just Business Things', 'INR', 'Asia/Kolkata', '04-01');
+        VALUES ('Freakz Apparel Hub', 'Freakz Apparel Hub', 'INR', 'Asia/Kolkata', '04-01');
       `);
 
       // 3. Users

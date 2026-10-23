@@ -10,7 +10,7 @@ export const getCompanySettings = async (req, res, next) => {
       // Auto-initialize default company settings if table is empty
       result = await query(`
         INSERT INTO company_settings (company_name, business_name, currency, timezone, financial_year_start)
-        VALUES ('Just Business Things', 'Just Business Things', 'INR', 'Asia/Kolkata', '04-01')
+        VALUES ('Freakz Apparel Hub', 'Freakz Apparel Hub', 'INR', 'Asia/Kolkata', '04-01')
         RETURNING *;
       `);
     }

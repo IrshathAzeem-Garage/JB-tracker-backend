@@ -14,7 +14,7 @@ pool.query('SELECT NOW()', (err, res) => {
 
   const server = app.listen(PORT, () => {
     console.log(`====================================================`);
-    console.log(`  JB Tracker API Server Running on port ${PORT}`);
+    console.log(`  Freakz Tracker API Server Running on port ${PORT}`);
     console.log(`  Environment: ${env.NODE_ENV}`);
     console.log(`  Config Source: ${process.env.DATABASE_URL ? 'Explicit DB URL supplied' : 'Default local fallback'}`);
     console.log(`  API Base URL: http://localhost:${PORT}/api`);
