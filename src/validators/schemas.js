@@ -149,3 +149,47 @@ export const userCreateSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
   role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).default('STAFF'),
 });
+
+export const NOTE_CATEGORIES = [
+  'General',
+  'Business Ideas',
+  'Meetings',
+  'Finance',
+  'Tasks',
+  'Suppliers',
+  'Customers',
+  'Other',
+];
+
+export const NOTE_PRIORITIES = ['Low', 'Medium', 'High'];
+
+export const noteCreateSchema = z.object({
+  title: z.string().trim().min(1, 'Title is required').max(255, 'Title cannot exceed 255 characters'),
+  content: z.string().trim().min(1, 'Note content is required'),
+  category: z.enum([
+    'General',
+    'Business Ideas',
+    'Meetings',
+    'Finance',
+    'Tasks',
+    'Suppliers',
+    'Customers',
+    'Other',
+  ]).default('General'),
+  tags: z.union([
+    z.array(z.string().trim().min(1)),
+    z.string().transform((val) =>
+      val
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+    ),
+  ]).optional().default([]),
+  priority: z.enum(['Low', 'Medium', 'High']).default('Medium'),
+  reminder_at: z.string().optional().nullable().or(z.literal('')).transform((v) => (v && v.trim() ? v.trim() : null)),
+  is_pinned: z.boolean().optional().default(false),
+  is_archived: z.boolean().optional().default(false),
+});
+
+export const noteUpdateSchema = noteCreateSchema.partial();
+

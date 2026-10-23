@@ -11,6 +11,7 @@ import moneyRoutes from './moneyRoutes.js';
 import partnerRoutes from './partnerRoutes.js';
 import reportRoutes from './reportRoutes.js';
 import settingsRoutes from './settingsRoutes.js';
+import noteRoutes from './noteRoutes.js';
 
 const router = Router();
 
@@ -26,5 +27,6 @@ router.use('/transactions', moneyRoutes);
 router.use('/partners', partnerRoutes);
 router.use('/reports', reportRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/notes', noteRoutes);
 
 export default router;
