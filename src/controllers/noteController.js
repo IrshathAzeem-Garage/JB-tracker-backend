@@ -4,7 +4,6 @@ import { logAudit } from '../utils/audit.js';
 
 export const getNotes = async (req, res, next) => {
   try {
-    const userId = req.user.id;
     const {
       page = 1,
       limit = 24,
@@ -14,11 +13,22 @@ export const getNotes = async (req, res, next) => {
       isPinned,
       isArchived = 'false',
       sortBy = 'updated',
+      authorId = '',
+      onlyMine = 'false',
     } = req.query;
 
     const offset = (Math.max(1, parseInt(page, 10)) - 1) * Math.max(1, parseInt(limit, 10));
-    const conditions = ['n.user_id = $1'];
-    const params = [userId];
+    const conditions = [];
+    const params = [];
+
+    // Filter by specific author or current user if requested
+    if (onlyMine === 'true') {
+      params.push(req.user.id);
+      conditions.push(`n.user_id = $${params.length}`);
+    } else if (authorId && authorId.trim()) {
+      params.push(authorId.trim());
+      conditions.push(`n.user_id = $${params.length}`);
+    }
 
     // Archive filter
     if (isArchived === 'true') {
@@ -48,13 +58,14 @@ export const getNotes = async (req, res, next) => {
       conditions.push(`n.priority = $${params.length}`);
     }
 
-    // Search filter across title, content, and tags
+    // Search filter across title, content, author name, and tags
     if (search && search.trim()) {
       params.push(`%${search.trim().toLowerCase()}%`);
       const searchParamIdx = params.length;
       conditions.push(`(
         LOWER(n.title) LIKE $${searchParamIdx} OR
         LOWER(n.content) LIKE $${searchParamIdx} OR
+        LOWER(COALESCE(u.name, '')) LIKE $${searchParamIdx} OR
         EXISTS (
           SELECT 1 FROM jsonb_array_elements_text(n.tags) tag_elem
           WHERE LOWER(tag_elem) LIKE $${searchParamIdx}
@@ -62,10 +73,15 @@ export const getNotes = async (req, res, next) => {
       )`);
     }
 
-    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     // Get total count matching current filters
-    const countSql = `SELECT COUNT(n.id) as total FROM notes n ${whereClause};`;
+    const countSql = `
+      SELECT COUNT(n.id) as total 
+      FROM notes n 
+      LEFT JOIN users u ON n.user_id = u.id 
+      ${whereClause};
+    `;
     const countRes = await query(countSql, params);
     const totalRecords = parseInt(countRes.rows[0].total, 10);
 
@@ -109,8 +125,12 @@ export const getNotes = async (req, res, next) => {
         n.is_pinned,
         n.is_archived,
         n.created_at,
-        n.updated_at
+        n.updated_at,
+        u.name as author_name,
+        u.email as author_email,
+        u.role as author_role
       FROM notes n
+      LEFT JOIN users u ON n.user_id = u.id
       ${whereClause}
       ORDER BY ${orderClause}
       LIMIT $${limitIdx} OFFSET $${offsetIdx};
@@ -118,17 +138,16 @@ export const getNotes = async (req, res, next) => {
 
     const notesRes = await query(dataSql, params);
 
-    // Also get overall user stats for summary indicators
+    // Get overall stats for summary indicators (across whole business)
     const summarySql = `
       SELECT 
         COUNT(id) FILTER (WHERE is_archived = FALSE) as total_active,
         COUNT(id) FILTER (WHERE is_archived = FALSE AND is_pinned = TRUE) as total_pinned,
         COUNT(id) FILTER (WHERE is_archived = TRUE) as total_archived,
         COUNT(id) as total_all
-      FROM notes
-      WHERE user_id = $1;
+      FROM notes;
     `;
-    const summaryRes = await query(summarySql, [userId]);
+    const summaryRes = await query(summarySql);
     const summaryRow = summaryRes.rows[0] || {};
 
     const summary = {
@@ -160,11 +179,17 @@ export const getNotes = async (req, res, next) => {
 export const getNoteById = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
 
     const result = await query(
-      `SELECT * FROM notes WHERE id = $1 AND user_id = $2;`,
-      [id, userId]
+      `SELECT 
+        n.*, 
+        u.name as author_name, 
+        u.email as author_email, 
+        u.role as author_role 
+      FROM notes n 
+      LEFT JOIN users u ON n.user_id = u.id 
+      WHERE n.id = $1;`,
+      [id]
     );
 
     if (result.rows.length === 0) {
@@ -221,6 +246,11 @@ export const createNote = async (req, res, next) => {
     const result = await query(insertSql, values);
     const newNote = result.rows[0];
 
+    // Attach author details for immediate client display
+    newNote.author_name = req.user.name;
+    newNote.author_email = req.user.email;
+    newNote.author_role = req.user.role;
+
     await logAudit({
       userId,
       action: 'CREATE',
@@ -241,8 +271,8 @@ export const updateNote = async (req, res, next) => {
     const userId = req.user.id;
 
     const existingRes = await query(
-      `SELECT * FROM notes WHERE id = $1 AND user_id = $2;`,
-      [id, userId]
+      `SELECT * FROM notes WHERE id = $1;`,
+      [id]
     );
 
     if (existingRes.rows.length === 0) {
@@ -273,7 +303,7 @@ export const updateNote = async (req, res, next) => {
         is_pinned = $7,
         is_archived = $8,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $9 AND user_id = $10
+      WHERE id = $9
       RETURNING *;
     `;
 
@@ -287,11 +317,18 @@ export const updateNote = async (req, res, next) => {
       is_pinned !== undefined ? Boolean(is_pinned) : currentNote.is_pinned,
       is_archived !== undefined ? Boolean(is_archived) : currentNote.is_archived,
       id,
-      userId,
     ];
 
     const updateRes = await query(updateSql, values);
     const updatedNote = updateRes.rows[0];
+
+    // Fetch author details
+    const authorRes = await query('SELECT name, email, role FROM users WHERE id = $1;', [updatedNote.user_id]);
+    if (authorRes.rows.length > 0) {
+      updatedNote.author_name = authorRes.rows[0].name;
+      updatedNote.author_email = authorRes.rows[0].email;
+      updatedNote.author_role = authorRes.rows[0].role;
+    }
 
     await logAudit({
       userId,
@@ -311,7 +348,6 @@ export const updateNote = async (req, res, next) => {
 export const togglePin = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
     const { is_pinned } = req.body;
 
     let updateSql;
@@ -321,18 +357,18 @@ export const togglePin = async (req, res, next) => {
       updateSql = `
         UPDATE notes
         SET is_pinned = $1, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $2 AND user_id = $3
+        WHERE id = $2
         RETURNING *;
       `;
-      values = [Boolean(is_pinned), id, userId];
+      values = [Boolean(is_pinned), id];
     } else {
       updateSql = `
         UPDATE notes
         SET is_pinned = NOT is_pinned, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $1 AND user_id = $2
+        WHERE id = $1
         RETURNING *;
       `;
-      values = [id, userId];
+      values = [id];
     }
 
     const result = await query(updateSql, values);
@@ -355,7 +391,6 @@ export const togglePin = async (req, res, next) => {
 export const toggleArchive = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
     const { is_archived } = req.body;
 
     let updateSql;
@@ -369,10 +404,10 @@ export const toggleArchive = async (req, res, next) => {
           is_archived = $1,
           is_pinned = CASE WHEN $1 = TRUE THEN FALSE ELSE is_pinned END,
           updated_at = CURRENT_TIMESTAMP
-        WHERE id = $2 AND user_id = $3
+        WHERE id = $2
         RETURNING *;
       `;
-      values = [willArchive, id, userId];
+      values = [willArchive, id];
     } else {
       updateSql = `
         UPDATE notes
@@ -380,10 +415,10 @@ export const toggleArchive = async (req, res, next) => {
           is_archived = NOT is_archived,
           is_pinned = CASE WHEN is_archived = FALSE THEN FALSE ELSE is_pinned END,
           updated_at = CURRENT_TIMESTAMP
-        WHERE id = $1 AND user_id = $2
+        WHERE id = $1
         RETURNING *;
       `;
-      values = [id, userId];
+      values = [id];
     }
 
     const result = await query(updateSql, values);
@@ -409,8 +444,8 @@ export const deleteNote = async (req, res, next) => {
     const userId = req.user.id;
 
     const result = await query(
-      `DELETE FROM notes WHERE id = $1 AND user_id = $2 RETURNING *;`,
-      [id, userId]
+      `DELETE FROM notes WHERE id = $1 RETURNING *;`,
+      [id]
     );
 
     if (result.rows.length === 0) {
@@ -435,8 +470,6 @@ export const deleteNote = async (req, res, next) => {
 
 export const getNotesSummary = async (req, res, next) => {
   try {
-    const userId = req.user.id;
-
     const statsSql = `
       SELECT 
         COUNT(id) FILTER (WHERE is_archived = FALSE) as total_active,
@@ -444,28 +477,27 @@ export const getNotesSummary = async (req, res, next) => {
         COUNT(id) FILTER (WHERE is_archived = TRUE) as total_archived,
         COUNT(id) FILTER (WHERE reminder_at IS NOT NULL AND reminder_at > CURRENT_TIMESTAMP) as upcoming_reminders,
         COUNT(id) as total_all
-      FROM notes
-      WHERE user_id = $1;
+      FROM notes;
     `;
 
     const catSql = `
       SELECT category, COUNT(id) as count
       FROM notes
-      WHERE user_id = $1 AND is_archived = FALSE
+      WHERE is_archived = FALSE
       GROUP BY category;
     `;
 
     const prioSql = `
       SELECT priority, COUNT(id) as count
       FROM notes
-      WHERE user_id = $1 AND is_archived = FALSE
+      WHERE is_archived = FALSE
       GROUP BY priority;
     `;
 
     const [statsRes, catRes, prioRes] = await Promise.all([
-      query(statsSql, [userId]),
-      query(catSql, [userId]),
-      query(prioSql, [userId]),
+      query(statsSql),
+      query(catSql),
+      query(prioSql),
     ]);
 
     const statsRow = statsRes.rows[0] || {};

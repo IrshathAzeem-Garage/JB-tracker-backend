@@ -89,7 +89,8 @@ describe('JB Tracker - Notes REST API End-to-End Tests', () => {
     assert.equal(body.data.user_id, userA.id);
   });
 
-  test('E2E-4: Strict Isolation: User B receives empty list, cannot see User A note', async () => {
+  test('E2E-4: Team Visibility: User B can see User A note by default, and onlyMine excludes it', async () => {
+    // 1. Default team view: User B can see the note
     const resB = await fetch(`${baseUrl}/notes`, {
       headers: { Authorization: `Bearer ${tokenB}` },
     });
@@ -97,7 +98,18 @@ describe('JB Tracker - Notes REST API End-to-End Tests', () => {
     const bodyB = await resB.json();
     assert.equal(bodyB.success, true);
     const foundInB = bodyB.data.notes.find((n) => n.id === createdNoteId);
-    assert.equal(foundInB, undefined, 'User B must not see User A note');
+    assert.ok(foundInB, 'User B can see User A note in shared team workspace');
+    assert.equal(foundInB.author_name, userA.name);
+
+    // 2. Filtered with onlyMine=true: User B does NOT see User A note
+    const resBMine = await fetch(`${baseUrl}/notes?onlyMine=true`, {
+      headers: { Authorization: `Bearer ${tokenB}` },
+    });
+    assert.equal(resBMine.status, 200);
+    const bodyBMine = await resBMine.json();
+    assert.equal(bodyBMine.success, true);
+    const foundInBMine = bodyBMine.data.notes.find((n) => n.id === createdNoteId);
+    assert.equal(foundInBMine, undefined, 'User B does not see User A note when onlyMine=true');
   });
 
   test('E2E-5: Search and filter notes for User A', async () => {

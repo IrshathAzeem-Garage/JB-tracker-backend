@@ -60,18 +60,24 @@ describe('JB Tracker - Professional Notes Management API & Data Layer Tests', ()
     assert.deepEqual(note.tags, ['corporate', 'q4', 'pricing']);
   });
 
-  test('2. Strict User Isolation: User B cannot access or view User A notes', async () => {
-    const resA = await query('SELECT * FROM notes WHERE id = $1 AND user_id = $2;', [
-      createdNoteId,
-      userA.id,
-    ]);
-    assert.equal(resA.rows.length, 1, 'User A must find their own note');
+  test('2. Team-wide visibility: User B can view User A notes in shared team workspace', async () => {
+    const resA = await query('SELECT * FROM notes WHERE id = $1;', [createdNoteId]);
+    assert.equal(resA.rows.length, 1, 'User A note must exist');
 
-    const resB = await query('SELECT * FROM notes WHERE id = $1 AND user_id = $2;', [
-      createdNoteId,
-      userB.id,
-    ]);
-    assert.equal(resB.rows.length, 0, 'User B must NOT see User A note');
+    // Both users can access the shared note
+    const resShared = await query(
+      `SELECT n.*, u.name as author_name FROM notes n LEFT JOIN users u ON n.user_id = u.id WHERE n.id = $1;`,
+      [createdNoteId]
+    );
+    assert.equal(resShared.rows.length, 1, 'User B can see the note in shared workspace');
+    assert.equal(resShared.rows[0].author_name, userA.name);
+
+    // If filtered by user_id for User B, it is correctly excluded
+    const resFilterMine = await query(
+      `SELECT * FROM notes WHERE id = $1 AND user_id = $2;`,
+      [createdNoteId, userB.id]
+    );
+    assert.equal(resFilterMine.rows.length, 0, 'Filtering by User B user_id excludes User A note');
   });
 
   test('3. Search notes: search by title, content keyword, and tags', async () => {
@@ -160,19 +166,12 @@ describe('JB Tracker - Professional Notes Management API & Data Layer Tests', ()
     assert.equal(updateRes.rows[0].priority, 'Medium');
   });
 
-  test('7. Delete note with user isolation', async () => {
-    // Attempt delete by User B should fail (0 rows deleted)
-    const delResB = await query(
-      `DELETE FROM notes WHERE id = $1 AND user_id = $2 RETURNING *;`,
-      [createdNoteId, userB.id]
+  test('7. Delete note permanently', async () => {
+    // Delete note succeeds
+    const delRes = await query(
+      `DELETE FROM notes WHERE id = $1 RETURNING *;`,
+      [createdNoteId]
     );
-    assert.equal(delResB.rows.length, 0);
-
-    // Delete by User A succeeds
-    const delResA = await query(
-      `DELETE FROM notes WHERE id = $1 AND user_id = $2 RETURNING *;`,
-      [createdNoteId, userA.id]
-    );
-    assert.equal(delResA.rows.length, 1);
+    assert.equal(delRes.rows.length, 1);
   });
 });
